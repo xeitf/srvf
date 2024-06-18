@@ -33,8 +33,15 @@ func WithHandler(handler http.Handler) HttpServerOption {
 	return newFnHttpServerOption(func(hs *HttpServer) { hs.s.Handler = handler })
 }
 
+// WithCertFile
+func WithCertFile(certFile, keyFile string) HttpServerOption {
+	return newFnHttpServerOption(func(hs *HttpServer) { hs.certFile, hs.keyFile = certFile, keyFile })
+}
+
 type HttpServer struct {
-	s *http.Server
+	s        *http.Server
+	certFile string
+	keyFile  string
 }
 
 // NewHttpServer
@@ -68,7 +75,11 @@ func (hs *HttpServer) Start(ctx context.Context, addr string) (err error) {
 	wg.Add(1)
 	go func() {
 		wg.Done()
-		err = hs.s.ListenAndServe()
+		if hs.certFile == "" {
+			err = hs.s.ListenAndServe()
+		} else {
+			err = hs.s.ListenAndServeTLS(hs.certFile, hs.keyFile)
+		}
 		shutdown <- 1
 	}()
 
