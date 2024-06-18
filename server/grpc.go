@@ -27,10 +27,16 @@ func (opt *fnGRPCServerOption) apply(gs *GRPCServer) {
 	opt.f(gs)
 }
 
+// WithServiceInjector
+func WithServiceInjector(injector func(s *grpc.Server)) GRPCServerOption {
+	return newFnGRPCServerOption(func(gs *GRPCServer) { gs.injector = injector })
+}
+
 type GRPCServer struct {
-	s    *grpc.Server
-	ln   net.Listener
-	addr string
+	s        *grpc.Server
+	ln       net.Listener
+	addr     string
+	injector func(s *grpc.Server)
 }
 
 // NewGRPCServer
@@ -42,6 +48,12 @@ func NewGRPCServer(opts ...GRPCServerOption) (gs *GRPCServer) {
 	for _, opt := range opts {
 		opt.apply(gs)
 	}
+
+	// Option: Injector
+	if gs.injector != nil {
+		gs.injector(gs.s)
+	}
+
 	return gs
 }
 
@@ -83,11 +95,6 @@ func (gs *GRPCServer) StartTCP(ctx context.Context, addr string) (err error) {
 // TODO StartHTTP
 func (gs *GRPCServer) StartHTTP(ctx context.Context, addr string) (err error) {
 	return
-}
-
-// OriginalGRPC
-func (gs *GRPCServer) OriginalGRPC() (s *grpc.Server) {
-	return gs.s
 }
 
 // Ready
