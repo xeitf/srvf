@@ -27,16 +27,16 @@ func (opt *fnGRPCServerOption) apply(gs *GRPCServer) {
 	opt.f(gs)
 }
 
-// WithServiceInjector
-func WithServiceInjector(injector func(s *grpc.Server)) GRPCServerOption {
-	return newFnGRPCServerOption(func(gs *GRPCServer) { gs.injector = injector })
+// WithServiceRegister
+func WithServiceRegister(fn func(s *grpc.Server)) GRPCServerOption {
+	return newFnGRPCServerOption(func(gs *GRPCServer) { gs.register = fn })
 }
 
 type GRPCServer struct {
 	s        *grpc.Server
 	ln       net.Listener
 	addr     string
-	injector func(s *grpc.Server)
+	register func(s *grpc.Server)
 }
 
 // NewGRPCServer
@@ -49,9 +49,9 @@ func NewGRPCServer(opts ...GRPCServerOption) (gs *GRPCServer) {
 		opt.apply(gs)
 	}
 
-	// Option: Injector
-	if gs.injector != nil {
-		gs.injector(gs.s)
+	// Option: Register
+	if gs.register != nil {
+		gs.register(gs.s)
 	}
 
 	return gs
