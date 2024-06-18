@@ -1,12 +1,12 @@
-package process
+package signal
 
 import (
 	"os"
 	"os/signal"
 )
 
-// WaitSignal
-func WaitSignal(signals ...os.Signal) {
+// Wait
+func Wait(signals ...os.Signal) {
 	if len(signals) <= 0 {
 		return
 	}
