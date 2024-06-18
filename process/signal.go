@@ -14,7 +14,5 @@ func WaitSignal(signals ...os.Signal) {
 	signalChan := make(chan os.Signal, 1)
 	signal.Notify(signalChan, signals...)
 
-	for range signalChan {
-		return
-	}
+	<-signalChan
 }
