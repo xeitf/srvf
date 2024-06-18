@@ -10,21 +10,57 @@ import (
 	"time"
 )
 
+type HttpServerOption interface {
+	apply(*HttpServer)
+}
+
+type fnHttpServerOption struct {
+	f func(*HttpServer)
+}
+
+// newFnHttpServerOption
+func newFnHttpServerOption(f func(*HttpServer)) *fnHttpServerOption {
+	return &fnHttpServerOption{f: f}
+}
+
+// apply
+func (opt *fnHttpServerOption) apply(hs *HttpServer) {
+	opt.f(hs)
+}
+
+// WithHandler
+func WithHandler(handler http.Handler) HttpServerOption {
+	return newFnHttpServerOption(func(hs *HttpServer) { hs.s.Handler = handler })
+}
+
 type HttpServer struct {
-	s     *http.Server
-	ready func() (bool, error)
+	s *http.Server
 }
 
 // NewHttpServer
-func NewHttpServer() (hs *HttpServer) {
-	return &HttpServer{s: &http.Server{}}
+func NewHttpServer(opts ...HttpServerOption) (hs *HttpServer) {
+	hs = &HttpServer{
+		s: &http.Server{},
+	}
+	// Apply option
+	for _, opt := range opts {
+		opt.apply(hs)
+	}
+
+	// Option: Handler
+	hs.s.Handler = hs.WithHealthChecker(hs.s.Handler)
+
+	return hs
 }
 
 // Start
-func (hs *HttpServer) Start(ctx context.Context,
-	addr string, handler http.Handler) (err error) {
+func (hs *HttpServer) Start(ctx context.Context, addr string) (err error) {
 	hs.s.Addr = addr
-	hs.s.Handler = hs.WithHealthChecker(handler)
+
+	// Option: Addr
+	if hs.s.Addr == "" {
+		hs.s.Addr = ":80"
+	}
 
 	var wg sync.WaitGroup
 	var shutdown = make(chan int)
@@ -48,12 +84,12 @@ func (hs *HttpServer) Start(ctx context.Context,
 }
 
 // withHealth
-func (hs *HttpServer) WithHealthChecker(handler http.Handler) http.Handler {
+func (hs *HttpServer) WithHealthChecker(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if r.URL.Path == "/health" {
 			fmt.Fprint(w, "OK")
-		} else {
-			handler.ServeHTTP(w, r)
+		} else if next != nil {
+			next.ServeHTTP(w, r)
 		}
 	})
 }
