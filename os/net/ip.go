@@ -7,7 +7,7 @@ import (
 // LookupIP
 func LookupIP(host string) (IPs []string) {
 	vv, _ := net.LookupIP(host)
-	if len(IPs) <= 0 {
+	if len(vv) <= 0 {
 		return
 	}
 	for _, v := range vv {
@@ -18,9 +18,12 @@ func LookupIP(host string) (IPs []string) {
 
 // LookupFirstIP
 func LookupFirstIP(host string) (IP string) {
-	if IPs := LookupIP(host); len(IPs) <= 0 {
+	vv, _ := net.LookupIP(host)
+	if len(vv) <= 0 {
 		return
-	} else {
-		return IPs[0]
 	}
+	for _, v := range vv {
+		return v.String()
+	}
+	return
 }
