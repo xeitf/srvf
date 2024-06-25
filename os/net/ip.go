@@ -2,6 +2,7 @@ package net
 
 import (
 	"net"
+	"os"
 )
 
 // LookupIP
@@ -26,4 +27,9 @@ func LookupFirstIP(host string) (IP string) {
 		return v.String()
 	}
 	return
+}
+
+// LookupLocalIP
+func LookupLocalIP() (IP string) {
+	return LookupFirstIP(os.Getenv("HOSTNAME"))
 }
