@@ -3,6 +3,7 @@ package server
 import (
 	"context"
 	"net"
+	"net/http"
 	"sync"
 	"time"
 
@@ -57,13 +58,8 @@ func NewGRPCServer(opts ...GRPCServerOption) (gs *GRPCServer) {
 	return gs
 }
 
-// Start
-func (gs *GRPCServer) Start(ctx context.Context, addr string) (err error) {
-	return gs.StartTCP(ctx, addr)
-}
-
 // StartTCP
-func (gs *GRPCServer) StartTCP(ctx context.Context, addr string) (err error) {
+func (gs *GRPCServer) Start(ctx context.Context, addr string) (err error) {
 	gs.addr = addr
 
 	gs.ln, err = net.Listen("tcp", gs.addr)
@@ -92,9 +88,9 @@ func (gs *GRPCServer) StartTCP(ctx context.Context, addr string) (err error) {
 	}
 }
 
-// TODO StartHTTP
-func (gs *GRPCServer) StartHTTP(ctx context.Context, addr string) (err error) {
-	return
+// ServeHTTP
+func (gs *GRPCServer) ServeHTTP(w http.ResponseWriter, r *http.Request) {
+	gs.s.ServeHTTP(w, r)
 }
 
 // Ready
@@ -111,5 +107,9 @@ func (gs *GRPCServer) Ready() (ok bool, err error) {
 // Stop
 func (gs *GRPCServer) Stop(ctx context.Context) (err error) {
 	gs.s.Stop()
-	return gs.ln.Close()
+
+	if gs.ln != nil {
+		return gs.ln.Close()
+	}
+	return
 }

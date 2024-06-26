@@ -8,45 +8,48 @@ import (
 	"net/http"
 	"sync"
 	"time"
+
+	"golang.org/x/net/http2"
 )
 
-type HttpServerOption interface {
-	apply(*HttpServer)
+type HTTPServerOption interface {
+	apply(*HTTPServer)
 }
 
-type fnHttpServerOption struct {
-	f func(*HttpServer)
+type fnHTTPServerOption struct {
+	f func(*HTTPServer)
 }
 
-// newFnHttpServerOption
-func newFnHttpServerOption(f func(*HttpServer)) *fnHttpServerOption {
-	return &fnHttpServerOption{f: f}
+// newFnHTTPServerOption
+func newFnHTTPServerOption(f func(*HTTPServer)) *fnHTTPServerOption {
+	return &fnHTTPServerOption{f: f}
 }
 
 // apply
-func (opt *fnHttpServerOption) apply(hs *HttpServer) {
+func (opt *fnHTTPServerOption) apply(hs *HTTPServer) {
 	opt.f(hs)
 }
 
 // WithHandler
-func WithHandler(handler http.Handler) HttpServerOption {
-	return newFnHttpServerOption(func(hs *HttpServer) { hs.s.Handler = handler })
+func WithHandler(handler http.Handler) HTTPServerOption {
+	return newFnHTTPServerOption(func(hs *HTTPServer) { hs.s.Handler = handler })
 }
 
-// WithCertFile
-func WithCertFile(certFile, keyFile string) HttpServerOption {
-	return newFnHttpServerOption(func(hs *HttpServer) { hs.certFile, hs.keyFile = certFile, keyFile })
+// WithTLS
+func WithTLS(certFile, keyFile string) HTTPServerOption {
+	return newFnHTTPServerOption(func(hs *HTTPServer) { hs.cert, hs.key = certFile, keyFile })
 }
 
-type HttpServer struct {
-	s        *http.Server
-	certFile string
-	keyFile  string
+type HTTPServer struct {
+	s    *http.Server
+	s2   *http2.Server
+	cert string
+	key  string
 }
 
-// NewHttpServer
-func NewHttpServer(opts ...HttpServerOption) (hs *HttpServer) {
-	hs = &HttpServer{
+// NewHTTPServer
+func NewHTTPServer(opts ...HTTPServerOption) (hs *HTTPServer) {
+	hs = &HTTPServer{
 		s: &http.Server{},
 	}
 	// Apply option
@@ -61,12 +64,17 @@ func NewHttpServer(opts ...HttpServerOption) (hs *HttpServer) {
 }
 
 // Start
-func (hs *HttpServer) Start(ctx context.Context, addr string) (err error) {
+func (hs *HTTPServer) Start(ctx context.Context, addr string) (err error) {
 	hs.s.Addr = addr
 
 	// Option: Addr
 	if hs.s.Addr == "" {
 		hs.s.Addr = ":80"
+	}
+
+	// Option: TLS
+	if hs.cert != "" {
+		hs.s2 = &http2.Server{}
 	}
 
 	var wg sync.WaitGroup
@@ -75,10 +83,15 @@ func (hs *HttpServer) Start(ctx context.Context, addr string) (err error) {
 	wg.Add(1)
 	go func() {
 		wg.Done()
-		if hs.certFile == "" {
-			err = hs.s.ListenAndServe()
-		} else {
-			err = hs.s.ListenAndServeTLS(hs.certFile, hs.keyFile)
+		if hs.s2 != nil {
+			err = http2.ConfigureServer(hs.s, hs.s2)
+		}
+		if err == nil {
+			if hs.cert == "" {
+				err = hs.s.ListenAndServe()
+			} else {
+				err = hs.s.ListenAndServeTLS(hs.cert, hs.key)
+			}
 		}
 		shutdown <- 1
 	}()
@@ -95,7 +108,7 @@ func (hs *HttpServer) Start(ctx context.Context, addr string) (err error) {
 }
 
 // withHealth
-func (hs *HttpServer) WithHealthChecker(next http.Handler) http.Handler {
+func (hs *HTTPServer) WithHealthChecker(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if r.URL.Path == "/health" {
 			fmt.Fprint(w, "OK")
@@ -106,13 +119,18 @@ func (hs *HttpServer) WithHealthChecker(next http.Handler) http.Handler {
 }
 
 // Ready
-func (hs *HttpServer) Ready() (ok bool, err error) {
-	host, port, err := net.SplitHostPort(hs.s.Addr)
-	if err != nil {
-		return false, err
+func (hs *HTTPServer) Ready() (ok bool, err error) {
+	if hs.cert != "" {
+		conn, err := net.Dial("tcp", hs.s.Addr)
+		if err != nil {
+			return false, err
+		}
+		defer conn.Close()
+
+		return true, nil
 	}
 
-	resp, err := http.Get(fmt.Sprintf("http://%s:%s/health", host, port))
+	resp, err := http.Get(fmt.Sprintf("http://%s/health", hs.s.Addr))
 	if err != nil {
 		return false, err
 	}
@@ -128,7 +146,7 @@ func (hs *HttpServer) Ready() (ok bool, err error) {
 }
 
 // Stop
-func (hs *HttpServer) Stop(ctx context.Context) (err error) {
+func (hs *HTTPServer) Stop(ctx context.Context) (err error) {
 	defer func() {
 		hs.s.Close()
 	}()
