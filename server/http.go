@@ -2,14 +2,17 @@ package server
 
 import (
 	"context"
-	"fmt"
-	"io"
+	"errors"
 	"net"
 	"net/http"
 	"sync"
 	"time"
 
 	"golang.org/x/net/http2"
+)
+
+var (
+	ErrInvalidCertOrKey = errors.New("invalid cert or key")
 )
 
 type HTTPServerOption interface {
@@ -57,9 +60,6 @@ func NewHTTPServer(opts ...HTTPServerOption) (hs *HTTPServer) {
 		opt.apply(hs)
 	}
 
-	// Option: Handler
-	hs.s.Handler = hs.WithHealthChecker(hs.s.Handler)
-
 	return hs
 }
 
@@ -73,6 +73,10 @@ func (hs *HTTPServer) Start(ctx context.Context, addr string) (err error) {
 	}
 
 	// Option: TLS
+	if (hs.cert != "" && hs.key == "") ||
+		(hs.cert == "" && hs.key != "") {
+		return ErrInvalidCertOrKey
+	}
 	if hs.cert != "" {
 		hs.s2 = &http2.Server{}
 	}
@@ -107,42 +111,15 @@ func (hs *HTTPServer) Start(ctx context.Context, addr string) (err error) {
 	}
 }
 
-// withHealth
-func (hs *HTTPServer) WithHealthChecker(next http.Handler) http.Handler {
-	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if r.URL.Path == "/health" {
-			fmt.Fprint(w, "OK")
-		} else if next != nil {
-			next.ServeHTTP(w, r)
-		}
-	})
-}
-
 // Ready
 func (hs *HTTPServer) Ready() (ok bool, err error) {
-	if hs.cert != "" {
-		conn, err := net.Dial("tcp", hs.s.Addr)
-		if err != nil {
-			return false, err
-		}
-		defer conn.Close()
-
-		return true, nil
-	}
-
-	resp, err := http.Get(fmt.Sprintf("http://%s/health", hs.s.Addr))
+	conn, err := net.Dial("tcp", hs.s.Addr)
 	if err != nil {
 		return false, err
 	}
+	defer conn.Close()
 
-	defer resp.Body.Close()
-
-	content, err := io.ReadAll(resp.Body)
-	if err != nil {
-		return false, err
-	}
-
-	return string(content) == "OK", nil
+	return true, nil
 }
 
 // Stop
