@@ -1,4 +1,4 @@
-module github.com/xeitf/svcf
+module github.com/xeitf/unit
 
 go 1.18
 
